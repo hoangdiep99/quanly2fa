@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trình Quản Lý 2FA Cá Nhân - Secure Share</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/otpauth/9.3.1/otpauth.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <style>
+        :root { 
+            --primary: #4F46E5; --bg: #F3F4F6; --card: #FFFFFF; --text: #1F2937; 
+            --danger: #EF4444; --border: #E5E7EB; --input-bg: #FFFFFF; --hover: #F9FAFB;
+            --warning: #F59E0B; --tag-bg: #E0E7FF; --tag-text: #4F46E5;
+        }
+        
+        body.dark-mode {
+            --bg: #111827; --card: #1F2937; --text: #F9FAFB; 
+            --border: #374151; --input-bg: #374151; --hover: #4B5563;
+            --tag-bg: #312E81; --tag-text: #E0E7FF;
+        }
+
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--bg); color: var(--text); max-width: 600px; margin: 40px auto; padding: 20px; transition: background-color 0.3s, color 0.3s; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        h2 { margin: 0; color: var(--primary); }
+        .card { background: var(--card); padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); margin-bottom: 20px; border: 1px solid var(--border); transition: background-color 0.3s; }
+        .input-group { display: flex; gap: 10px; margin-bottom: 15px; }
+        input, select { flex: 1; padding: 10px 15px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; background-color: var(--input-bg); color: var(--text); transition: border-color 0.2s; box-sizing: border-box; }
+        input:focus, select:focus { outline: none; border-color: var(--primary); }
+        button { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: opacity 0.2s; }
+        button:hover { opacity: 0.9; }
+        .toolbar { display: flex; gap: 10px; justify-content: flex-end; margin-bottom: 15px; }
+        .btn-secondary { background: #6B7280; font-size: 13px; padding: 8px 15px; }
+        .action-btns { display: flex; gap: 8px; align-items: center; }
+        .btn-warning { background-color: var(--warning) !important; color: white !important; padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: bold; cursor: pointer; }
+        .btn-danger { background-color: var(--danger) !important; color: white !important; padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: bold; cursor: pointer; }
+        .search-box { margin-bottom: 15px; }
+        .search-box input { width: 100%; box-sizing: border-box; font-size: 15px; padding: 12px 15px; border-radius: 25px; border: 2px solid var(--border); }
+        .category-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px dashed var(--border); }
+        .tab-btn { background: var(--border); color: var(--text); padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; border: none; }
+        .tab-btn.active { background: var(--primary); color: white; }
+        .account-tag { display: inline-block; background: var(--tag-bg); color: var(--tag-text); font-size: 11px; font-weight: bold; padding: 2px 8px; border-radius: 4px; margin-left: 8px; vertical-align: middle; }
+        .acc-title-area { display: flex; align-items: center; }
+        .acc-title-area h4 { margin: 0; font-size: 16px; }
+        .account-item { display: flex; justify-content: space-between; align-items: center; padding: 15px; border-bottom: 1px solid var(--border); transition: background-color 0.2s; }
+        .account-item:last-child { border-bottom: none; }
+        .acc-info-wrapper { display: flex; align-items: center; }
+        .code-container { display: flex; align-items: center; gap: 12px; margin-top: 5px; }
+        .acc-code { font-size: 28px; font-family: monospace; font-weight: bold; color: var(--primary); letter-spacing: 3px; margin: 0; cursor: pointer; transition: color 0.2s; }
+        .mini-timer-ring { width: 18px; height: 18px; border-radius: 50%; display: inline-block; transition: background 1s linear; }
+        .time-left { font-size: 13px; font-weight: bold; min-width: 22px; }
+        .empty-state { text-align: center; color: #6B7280; font-style: italic; padding: 20px 0; }
+        #toast { visibility: hidden; min-width: 250px; background-color: #10B981; color: white; text-align: center; border-radius: 8px; padding: 12px 20px; position: fixed; z-index: 1000; left: 50%; bottom: 30px; transform: translateX(-50%); font-size: 15px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.2); opacity: 0; transition: opacity 0.3s, bottom 0.3s; }
+        #toast.show { visibility: visible; opacity: 1; bottom: 50px; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h2>Quản Lý 2FA Cá Nhân</h2>
+        <button onclick="toggleDarkMode()" id="darkModeBtn" class="btn-secondary">🌙 Tối</button>
+    </div>
+
+    <div class="card">
+        <h3 id="formTitle">Thêm Tài Khoản Mới</h3>
+        <div class="input-group">
+            <input type="text" id="accName" placeholder="Tên tài khoản (VD: Facebook Cá Nhân)">
+        </div>
+        <div class="input-group">
+            <select id="accGroupSelect" onchange="handleGroupSelectChange()">
+                <option value="">-- Chọn Nhóm Có Sẵn --</option>
+            </select>
+            <input type="text" id="accGroupCustom" placeholder="Hoặc tự gõ tên Nhóm Mới tự do...">
+        </div>
+        <div class="input-group">
+            <input type="text" id="accSecret" placeholder="Mã Secret Key (VD: JBSWY3DPEHPK3PXP)">
+            <button onclick="saveAccount()" id="btnSubmit">Lưu Lại</button>
+        </div>
+        <div id="cancelEditGroup" style="display: none; text-align: right; margin-top: -5px;">
+            <a href="javascript:void(0)" onclick="cancelEdit()" style="color: #6B7280; font-size: 13px; text-decoration: none;">❌ Hủy chỉnh sửa</a>
+        </div>
+    </div>
+
+    <div class="toolbar">
+        <button class="btn-secondary" onclick="document.getElementById('importFile').click()">📥 Nhập File Sao Lưu</button>
+        <button class="btn-secondary" onclick="exportData()">📤 Xuất File Mã Hóa</button>
+        <input type="file" id="importFile" style="display:none" accept=".json" onchange="importData(event)">
+    </div>
+
+    <div class="card">
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="🔍 Tìm kiếm tài khoản..." oninput="filterAccounts()">
+        </div>
+        <div class="category-tabs" id="categoryTabs">
+            <button class="tab-btn active" onclick="switchTab('ALL')">Tất cả</button>
+        </div>
+        <div id="accountList"></div>
+    </div>
+
+    <div id="toast">Đã copy mã thành công!</div>
+
+<script>
+    let accounts = JSON.parse(localStorage.getItem('my2fa_share_accounts')) || [];
+    let draggedIndex = null;
+    let toastTimeout; 
+    let editingIndex = null; 
+    let currentTab = 'ALL';
+
+    function toggleDarkMode() {
+        document.body.classList.toggle('dark-mode');
+        const isDark = document.body.classList.contains('dark-mode');
+        localStorage.setItem('my2fa_share_darkmode', isDark);
+        document.getElementById('darkModeBtn').innerText = isDark ? '☀️ Sáng' : '🌙 Tối';
+    }
+
+    if (localStorage.getItem('my2fa_share_darkmode') === 'true') {
+        document.body.classList.add('dark-mode');
+        document.getElementById('darkModeBtn').innerText = '☀️ Sáng';
+    }
+
+    // XUẤT FILE: Bắt nhập mật khẩu riêng tư để khóa dữ liệu lại
+    function exportData() {
+        if (accounts.length === 0) {
+            alert("Chưa có tài khoản nào để xuất!");
+            return;
+        }
+
+        const password = prompt("ĐẶT MẬT KHẨU MÃ HÓA CHO FILE SAO LƯU:\n(Mọi người tự đặt mật khẩu riêng để khóa file bảo mật. Nhớ kỹ mật khẩu này để nhập lại khi cần khôi phục)");
+        if (!password) return;
+
+        const now = new Date();
+        const day = String(now.getDate()).padStart(2, '0');
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const year = now.getFullYear();
+        
+        const fileName = `2fa_secure_${day}-${month}-${year}.json`;
+
+        try {
+            const rawJsonText = JSON.stringify(accounts);
+            // Mã hóa dữ liệu bằng mật khẩu vừa nhập
+            const encryptedText = CryptoJS.AES.encrypt(rawJsonText, password).toString();
+            const secureBackupPackage = { type: "secure_share_v2", data: encryptedText };
+
+            const blob = new Blob([JSON.stringify(secureBackupPackage, null, 2)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = fileName; a.click(); URL.revokeObjectURL(url);
+            showToast("Đã mã hóa dữ liệu thành công!");
+        } catch (e) { alert("Có lỗi xảy ra khi mã hóa: " + e); }
+    }
+
+    // NHẬP FILE: Yêu cầu điền mật khẩu đã đặt để mở khóa
+    function importData(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const parsedFile = JSON.parse(e.target.result);
+                
+                if (parsedFile && parsedFile.type === "secure_share_v2" && parsedFile.data) {
+                    const password = prompt("NHẬP MẬT KHẨU ĐỂ GIẢI MÃ FILE:");
+                    if (!password) return;
+
+                    const bytes = CryptoJS.AES.decrypt(parsedFile.data, password);
+                    const decryptedText = bytes.toString(CryptoJS.enc.Utf8);
+
+                    if (!decryptedText) {
+                        alert("❌ SAI MẬT KHẨU! File sao lưu không thể mở khóa giải mã.");
+                        return;
+                    }
+
+                    const importedAccounts = JSON.parse(decryptedText);
+                    if (Array.isArray(importedAccounts)) {
+                        accounts = importedAccounts;
+                        localStorage.setItem('my2fa_share_accounts', JSON.stringify(accounts));
+                        cancelEdit(); updateGroupDropdown(); renderTabs(); renderAccounts();
+                        alert("📥 Khôi phục danh sách tài khoản thành công!");
+                    }
+                } else if (Array.isArray(parsedFile)) {
+                    // Hỗ trợ cả định dạng file cũ chưa mã hóa
+                    accounts = parsedFile;
+                    localStorage.setItem('my2fa_share_accounts', JSON.stringify(accounts));
+                    cancelEdit(); updateGroupDropdown(); renderTabs(); renderAccounts();
+                    alert("📥 Khôi phục file cũ thành công!");
+                } else {
+                    alert("Định dạng file không tương thích!");
+                }
+            } catch (err) { alert("Lỗi đọc file hoặc mật khẩu không chính xác!"); }
+        };
+        reader.readAsText(file);
+        event.target.value = ''; 
+    }
+
+    function handleGroupSelectChange() { if (document.getElementById('accGroupSelect').value !== "") { document.getElementById('accGroupCustom').value = ""; } }
+    function getAllGroups() { let groups = []; accounts.forEach(acc => { if (acc.group && acc.group.trim() !== '' && !groups.includes(acc.group.trim())) { groups.push(acc.group.trim()); } }); return groups; }
+    function updateGroupDropdown() { const select = document.getElementById('accGroupSelect'); let html = '<option value="">-- Chọn Nhóm Có Sẵn --</option>'; getAllGroups().forEach(g => { html += `<option value="${g}">${g}</option>`; }); select.innerHTML = html; }
+    function renderTabs() { const tabsDiv = document.getElementById('categoryTabs'); let html = `<button class="tab-btn ${currentTab === 'ALL' ? 'active' : ''}" onclick="switchTab('ALL')">Tất cả</button>`; getAllGroups().forEach(g => { html += `<button class="tab-btn ${currentTab === g ? 'active' : ''}" onclick="switchTab('${g}')">${g}</button>`; }); tabsDiv.innerHTML = html; }
+    function switchTab(groupName) { currentTab = groupName; renderTabs(); filterAccounts(); }
+
+    function saveAccount() {
+        const name = document.getElementById('accName').value.trim();
+        const secret = document.getElementById('accSecret').value.replace(/\s+/g, '').toUpperCase();
+        const group = document.getElementById('accGroupCustom').value.trim() !== "" ? document.getElementById('accGroupCustom').value.trim() : document.getElementById('accGroupSelect').value;
+        if (!name || !secret) { alert('Vui lòng điền đủ thông tin!'); return; }
+        try {
+            new OTPAuth.TOTP({ secret: OTPAuth.Secret.fromBase32(secret) });
+            if (editingIndex !== null) accounts[editingIndex] = { name, secret, group };
+            else accounts.unshift({ name, secret, group });
+            localStorage.setItem('my2fa_share_accounts', JSON.stringify(accounts));
+            cancelEdit(); updateGroupDropdown(); renderTabs(); renderAccounts();
+        } catch (error) { alert('Mã Secret không đúng định dạng hợp lệ!'); }
+    }
+
+    function editAccount(index) {
+        editingIndex = index; const targetAcc = accounts[index];
+        document.getElementById('accName').value = targetAcc.name; document.getElementById('accSecret').value = targetAcc.secret;
+        updateGroupDropdown(); const groupVal = targetAcc.group || ""; const select = document.getElementById('accGroupSelect');
+        let hasOption = false; for (let i = 0; i < select.options.length; i++) { if (select.options[i].value === groupVal) { hasOption = true; break; } }
+        if (hasOption && groupVal !== "") { select.value = groupVal; document.getElementById('accGroupCustom').value = ""; } 
+        else { select.value = ""; document.getElementById('accGroupCustom').value = groupVal; }
+        document.getElementById('formTitle').innerText = 'Chỉnh Sửa Tài Khoản'; document.getElementById('btnSubmit').innerText = 'Cập Nhật'; document.getElementById('cancelEditGroup').style.display = 'block'; window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function cancelEdit() { editingIndex = null; document.getElementById('accName').value = ''; document.getElementById('accSecret').value = ''; document.getElementById('accGroupCustom').value = ''; document.getElementById('accGroupSelect').value = ''; document.getElementById('formTitle').innerText = 'Thêm Tài Khoản Mới'; document.getElementById('btnSubmit').innerText = 'Lưu Lại'; document.getElementById('cancelEditGroup').style.display = 'none'; }
+    function deleteAccount(index) { if (confirm('Bạn có chắc muốn xóa tài khoản này khỏi máy?')) { if (editingIndex === index) { cancelEdit(); } else if (editingIndex !== null && index < editingIndex) { editingIndex--; } accounts.splice(index, 1); localStorage.setItem('my2fa_share_accounts', JSON.stringify(accounts)); if (currentTab !== 'ALL' && !getAllGroups().includes(currentTab)) { currentTab = 'ALL'; } updateGroupDropdown(); renderTabs(); renderAccounts(); } }
+    function showToast(message) { const toast = document.getElementById("toast"); toast.innerText = message; toast.className = "show"; clearTimeout(toastTimeout); toastTimeout = setTimeout(function(){ toast.className = toast.className.replace("show", ""); }, 2500); }
+    function copyCode(element) { const code = element.innerText; if(code === "------") return; navigator.clipboard.writeText(code).then(() => { const originalColor = element.style.color; element.style.color = '#10B981'; setTimeout(() => { element.style.color = originalColor; }, 500); showToast(`Đã copy mã: ${code}`); }); }
+
+    function filterAccounts() {
+        const query = document.getElementById('searchInput').value.toLowerCase();
+        document.querySelectorAll('.account-item').forEach((item, index) => {
+            if(accounts[index]) {
+                const matchQuery = accounts[index].name.toLowerCase().includes(query);
+                const matchTab = (currentTab === 'ALL') || ((accounts[index].group || "") === currentTab);
+                item.style.display = (matchQuery && matchTab) ? 'flex' : 'none';
+            }
+        });
+    }
+
+    function renderAccounts() {
+        const listDiv = document.getElementById('accountList');
+        if (accounts.length === 0) { listDiv.innerHTML = '<div class="empty-state">Chưa có tài khoản nào được lưu.</div>'; return; }
+        let html = '';
+        accounts.forEach((acc, index) => {
+            const tagHtml = (acc.group && acc.group.trim() !== '') ? `<span class="account-tag">${acc.group}</span>` : '';
+            html += `<div class="account-item"><div class="acc-info-wrapper"><div class="acc-info"><div class="acc-title-area"><h4>${acc.name}</h4>${tagHtml}</div><div class="code-container"><p class="acc-code" id="code-${index}" onclick="copyCode(this)">------</p><div class="mini-timer-ring" id="ring-${index}"></div><span class="time-left" id="time-${index}">--s</span></div></div></div><div class="action-btns"><button class="btn-warning" onclick="editAccount(${index})">Sửa</button><button class="btn-danger" onclick="deleteAccount(${index})">Xóa</button></div></div>`;
+        });
+        listDiv.innerHTML = html; filterAccounts(); updateAllCodes(); 
+    }
+
+    function updateAllCodes() {
+        let epoch = Math.floor(Date.now() / 1000); let remaining = 30 - (epoch % 30); let percent = (remaining / 30) * 100; let color = remaining <= 5 ? 'var(--danger)' : 'var(--primary)';
+        accounts.forEach((acc, index) => {
+            let element = document.getElementById(`code-${index}`); let ring = document.getElementById(`ring-${index}`); let timeText = document.getElementById(`time-${index}`);
+            if (element) {
+                try { element.innerText = new OTPAuth.TOTP({ algorithm: 'SHA1', digits: 6, period: 30, secret: OTPAuth.Secret.fromBase32(acc.secret) }).generate(); } catch(e) { element.innerText = "ERROR"; }
+                if (ring) ring.style.background = `conic-gradient(${color} ${percent}%, var(--border) ${percent}%)`;
+                if (timeText) { timeText.innerText = remaining + 's'; timeText.style.color = color; }
+            }
+        });
+    }
+
+    updateGroupDropdown(); renderTabs(); renderAccounts(); setInterval(updateAllCodes, 1000); 
+</script>
+</body>
+</html>
